@@ -1,0 +1,18 @@
+/**
+     * Adds 1 to the frequency count for v.
+     * <p>
+     * If other objects have already been added to this Frequency, v must
+     * be comparable to those that have already been added.
+     * </p>
+     * 
+     * @param v the value to add.
+     * @throws IllegalArgumentException if <code>v</code> is not Comparable, 
+     *         or is not comparable with previous entries
+     * @deprecated use {@link #addValue(Comparable)} instead
+     */
+public void addValue(Object v) {
+    if (!(v instanceof Comparable<?>)) {
+        throw new IllegalArgumentException("Attempting to add a non-Comparable object");
+    }
+    addValue((Comparable<?>) v);
+}
