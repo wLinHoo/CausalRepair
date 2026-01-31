@@ -70,7 +70,7 @@ def format_test_info(failing_tests_list, include_test_slice_and_deps=True):
         valid_test_case_count += 1
         
         test_method_name = test.get('test_method_name')
-        # test_snippet_code = test.get('sliced_test') or test.get('failing_function') # 这行可以移到if内部
+        # test_snippet_code = test.get('sliced_test') or test.get('failing_function')
         failure_message = test.get('failure_message')
 
         info_str += f"--- Test Case #{valid_test_case_count} ---\n" 
