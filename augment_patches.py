@@ -1,28 +1,24 @@
-# File: augment_patches.py (Upgraded Version 2.0)
+# File: augment_patches.py
 
 import argparse
 import json
 import os
 import time
 
-# 从您现有的工具模块中导入所需函数
 from utils.prompt import AUGMENT_PROMPT, format_test_info
 from utils.api_request import request_engine, create_request_config
 from utils.validate_d4j import validate_patch
 from utils.parse_d4j import clean_parse_d4j, get_unified_diff
-# 从 iterative_repair.py 导入 add_bug_comments 和 extract_code 函数
 from iterative_repair import add_bug_comments, extract_code
 
 
-# 核心路径配置 (与 iterative_repair.py 保持一致)
-PROJECT_ROOT = "/root/autodl-tmp/APR/slicer4repair-patch-aug"
-DEFECTS4J_CMD = "/root/autodl-tmp/APR/defects4j/framework/bin/defects4j"
+PROJECT_ROOT = ""
+DEFECTS4J_CMD = "defects4j/framework/bin/defects4j"
 SINGLE_FUNCTION_JSON_PATH = os.path.join(PROJECT_ROOT, "Defects4j/single_function_repair.json")
 TEST_INFO_JSON_PATH = os.path.join(PROJECT_ROOT, "Defects4j/d4j_test_info_with_slice.json")
 LOCATION_FOLDER_PATH = os.path.join(PROJECT_ROOT, "Defects4j/location")
 
 
-# ★★★ 新增点 1: 增加 Defects4J 1.2 版本 bug 列表的辅助函数 ★★★
 def build_d4j1_2():
     """
     Returns a list of bug IDs for Defects4J v1.2.
@@ -53,9 +49,6 @@ def build_d4j1_2():
 
 
 def log_augmentation_stats(output_folder, total_duration, total_queries, bug_times, successful_bugs):
-    """
-    记录补丁增强过程的统计数据。
-    """
     log_file_path = os.path.join(output_folder, "augmentation_statistics.txt")
     
     num_total_bugs = len(bug_times)
@@ -95,7 +88,7 @@ def run_augmentation(args, all_bugs_data, test_info_data, bugs_to_process):
     """
     process_start_time = time.time()
     total_llm_queries = 0
-    successful_bugs = set() # 改为 set 以方便添加
+    successful_bugs = set()
     bug_times = {}
 
     output_folder = args.output_folder
@@ -120,7 +113,6 @@ def run_augmentation(args, all_bugs_data, test_info_data, bugs_to_process):
              print(f"  Skipping {bug_id}: Already has {len(results[bug_id])} attempts in previous results.")
              continue
 
-        # 获取所需的数据
         bug_data = all_bugs_data.get(bug_id + ".java")
         test_data = test_info_data.get(bug_id)
         if not bug_data or not test_data:
@@ -128,18 +120,14 @@ def run_augmentation(args, all_bugs_data, test_info_data, bugs_to_process):
             continue
         
         plausible_patch = patch_data['patch']
-        # 初始化或加载已有结果
         results[bug_id] = results.get(bug_id, [])
         
-        # 初始化 p_diff，包含 plausible patch 和所有历史尝试
         p_diff = {get_unified_diff(bug_data['buggy'], plausible_patch)}
         for attempt in results[bug_id]:
             p_diff.add(get_unified_diff(bug_data['buggy'], attempt['patch']))
 
         has_at_least_one_valid_patch = any(attempt.get('valid') for attempt in results[bug_id])
 
-        # ★★★ 修改点 2: 核心逻辑修改，确保执行固定次数的尝试 (已更新为 while 循环) ★★★
-        # 计算还需要多少次 *成功* 的尝试
         attempts_so_far = len(results[bug_id])
         attempts_needed = args.max_attempts - attempts_so_far
 
@@ -149,61 +137,42 @@ def run_augmentation(args, all_bugs_data, test_info_data, bugs_to_process):
         
         print(f"  {bug_id}: Needs {attempts_needed} more attempts (has {attempts_so_far}, target {args.max_attempts}).")
 
-        # 使用 while 循环来确保我们 *成功* 完成 'attempts_needed' 次API调用
-        # 借鉴 iterative_repair.py 中的重试逻辑
-        # while attempts_needed > 0:
-            
-        #     # current_attempt_index 应该是基于 *已记录* 的结果
-        #     current_attempt_index = len(results[bug_id]) + 1
         while attempts_needed > 0:
             
-            # <<< 新增：记录单次尝试的开始时间
             attempt_start_time = time.time()
             
-            # current_attempt_index 应该是基于 *已记录* 的结果
             current_attempt_index = len(results[bug_id]) + 1  
             
             print(f"  [Attempt {current_attempt_index}/{args.max_attempts}] Generating alternative patch...")
 
-            # 格式化测试信息
             test_info_str = format_test_info(
                 test_data['failing_tests'], 
                 include_test_slice_and_deps=False
             )
             
-            # 为缺陷代码添加位置信息
             buggy_code_with_location = add_bug_comments(bug_data['buggy'], bug_data['location'])
 
-            # 构建Prompt
             prompt = AUGMENT_PROMPT.format(
                 buggy_function=buggy_code_with_location,
                 test_info=test_info_str,
                 plausible_patch=plausible_patch
             )
-            # print(prompt)
 
-            # 请求LLM
             config = create_request_config(prompt=prompt, provider=args.provider, model=args.model, temperature=args.temperature)
             model_output, token_usage = request_engine(config)
             total_llm_queries += 1
             
-            # 提取代码
             new_patch = extract_code(model_output) if model_output else ""
             
-            # --- ★★★ 这就是您要的新逻辑 ★★★ ---
-            # 如果 API 请求失败或代码提取失败，重试
             if not new_patch:
                 print(f"      API request or code extraction failed for attempt {current_attempt_index}. Retrying after 5 seconds...")
-                time.sleep(5) # 等待 5 秒
-                continue      # 'continue' 将会重新开始 while 循环，而 'attempts_needed' 计数器不会减少
-                              # 这将重试同一次 attempt
+                time.sleep(5) 
+                continue      
             
-            # --- 检查重复 (逻辑不变) ---
             diff = get_unified_diff(bug_data['buggy'], new_patch)
             if diff in p_diff:
                 print("      Generated a duplicate patch. Skipping validation.")
-                
-                # <<< 新增：计算耗时
+
                 attempt_end_time = time.time()
                 attempt_duration = attempt_end_time - attempt_start_time
                 
@@ -213,16 +182,14 @@ def run_augmentation(args, all_bugs_data, test_info_data, bugs_to_process):
                     "message": {"type": "duplicate", "message": "Generated a duplicate patch."}, 
                     "patch": new_patch, 
                     "token_usage": token_usage,
-                    "duration_seconds": attempt_duration  # <<< 新增字段
+                    "duration_seconds": attempt_duration  
                 })
                 
-                # 即使是重复的，也算作一次 *已完成* 的尝试，所以我们要减少计数器
                 attempts_needed -= 1
-                continue # 'continue' 将会进入下一次 'while' 循环
+                continue 
 
             p_diff.add(diff)
 
-            # --- 验证新补丁 (逻辑不变) ---
             print("      Validating new patch...")
             is_valid, message_info = validate_patch(
                 bug_id=bug_id, 
@@ -232,18 +199,16 @@ def run_augmentation(args, all_bugs_data, test_info_data, bugs_to_process):
                 loc_folder=LOCATION_FOLDER_PATH
             )
 
-            # <<< 新增：计算耗时
             attempt_end_time = time.time()
             attempt_duration = attempt_end_time - attempt_start_time
 
-            # --- 记录结果 (逻辑不变) ---
             results[bug_id].append({
                 "attempt": current_attempt_index,
                 "valid": is_valid,
-                "message": message_info,         # (原代码中已有)
-                "patch": new_patch,              # (原代码中已有)
-                "token_usage": token_usage,      # (原代码中已有)
-                "duration_seconds": attempt_duration  # <<< 新增字段
+                "message": message_info,  
+                "patch": new_patch,             
+                "token_usage": token_usage,      
+                "duration_seconds": attempt_duration  
             })
 
             if is_valid:
@@ -252,24 +217,19 @@ def run_augmentation(args, all_bugs_data, test_info_data, bugs_to_process):
             else:
                 print(f"      ---> FAILED: Validation error type '{message_info.get('type', 'Unknown')}'")
 
-            # --- ★★★ 标记一次尝试已完成 ★★★ ---
-            # 只有当一次完整的尝试（非API失败）完成后，才减少计数器
             attempts_needed -= 1
         
-        # 循环结束后，原子性地写入一次结果文件
         temp_file_path = result_file_path + ".tmp"
         with open(temp_file_path, "w") as f:
             json.dump(results, f, indent=2)
         os.rename(temp_file_path, result_file_path)
 
-        # 记录本次bug处理的时间和状态
         bug_end_time = time.time()
         bug_duration = bug_end_time - bug_start_time
         bug_times[bug_id] = bug_duration
         if has_at_least_one_valid_patch:
             successful_bugs.add(bug_id)
         
-        # 实时更新统计数据
         duration_so_far = time.time() - process_start_time
         log_augmentation_stats(output_folder, duration_so_far, total_llm_queries, bug_times, list(successful_bugs))
 
@@ -307,7 +267,6 @@ def main():
         default=40, 
         help="The fixed number of new alternative patches to generate for each plausible patch."
     )
-    # ★★★ 新增点 3: 增加 d4j_version 命令行参数 ★★★
     parser.add_argument(
         "--d4j_version", 
         type=str, 
@@ -334,7 +293,6 @@ def main():
     with open(args.input_plausible, "r") as f:
         plausible_patches = json.load(f)
 
-    # ★★★ 新增点 4: 根据 d4j_version 参数筛选要运行的 bugs ★★★
     bugs_to_run = {}
     print(f"4. Filtering bugs for Defects4J version: {args.d4j_version}")
     if args.d4j_version == "all":
