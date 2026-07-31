@@ -12,11 +12,13 @@ from utils.parse_d4j import clean_parse_d4j, get_unified_diff
 from iterative_repair import add_bug_comments, extract_code
 
 
-PROJECT_ROOT = ""
-DEFECTS4J_CMD = "defects4j/framework/bin/defects4j"
-SINGLE_FUNCTION_JSON_PATH = os.path.join(PROJECT_ROOT, "Defects4j/single_function_repair.json")
-TEST_INFO_JSON_PATH = os.path.join(PROJECT_ROOT, "Defects4j/d4j_test_info_with_slice.json")
-LOCATION_FOLDER_PATH = os.path.join(PROJECT_ROOT, "Defects4j/location")
+# Environment-overridable paths (see iterative_repair.py for rationale).
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFECTS4J_CMD = os.environ.get("DEFECTS4J_CMD", "/opt/defects4j/framework/bin/defects4j")
+D4J_DATA_DIR = os.environ.get("CAUSALREPAIR_DATA", os.path.join(_SCRIPT_DIR, "Defects4J"))
+SINGLE_FUNCTION_JSON_PATH = os.path.join(D4J_DATA_DIR, "single_function_repair.json")
+TEST_INFO_JSON_PATH = os.path.join(D4J_DATA_DIR, "d4j_test_info_sf.json")
+LOCATION_FOLDER_PATH = os.path.join(D4J_DATA_DIR, "location")
 
 
 def build_d4j1_2():
@@ -280,6 +282,13 @@ def main():
         default=1.0,
         help="The temperature for LLM sampling."
     )
+    parser.add_argument(
+        "--bug_list",
+        type=str,
+        default=None,
+        help="Optional path to a file with one bug id per line; restricts the run "
+             "to those bugs. Used for the reduced demo scope.",
+    )
     args = parser.parse_args()
 
     print("1. Loading original bug data...")
@@ -311,6 +320,16 @@ def main():
     if not bugs_to_run:
         print("   ERROR: No bugs found to run after filtering. Please check your plausible patches file and version selection.")
         return
+
+    # Optional reduced-scope filter: keep only bug ids listed in --bug_list.
+    if args.bug_list:
+        with open(args.bug_list, "r", encoding="utf-8") as f:
+            wanted = {line.strip() for line in f if line.strip() and not line.startswith("#")}
+        bugs_to_run = {k: v for k, v in bugs_to_run.items() if k in wanted}
+        print(f"   Restricted to {len(bugs_to_run)} bug(s) from {args.bug_list}.")
+        if not bugs_to_run:
+            print("   ERROR: No bugs left after applying --bug_list filter.")
+            return
 
     print(f"5. Starting augmentation process for {len(bugs_to_run)} bugs...")
     run_augmentation(args, all_bugs_data, test_info_data, bugs_to_run)

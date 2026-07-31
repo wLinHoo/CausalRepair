@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+results/
+*.tar.gz
+plausible_patches.json
+repair_result_iterative.json
+.env

@@ -3,24 +3,31 @@
 import requests
 import time
 import json
+import os
 from openai import OpenAI
 
 # ======================================================================
 # API Client Configuration
+#
+# Keys are read from environment variables. Set the one(s) you need, e.g.:
+#   export SILICONFLOW_API_KEY=sk-...
+#   export OPENAI_API_KEY=sk-...
+#   export ZHIPU_API_KEY=...
 # ======================================================================
 
 # --- SiliconFlow ---
-SILICONFLOW_API_KEY = ""
+SILICONFLOW_API_KEY = os.environ.get("SILICONFLOW_API_KEY", "")
 SILICONFLOW_URL = "https://api.siliconflow.cn/v1/chat/completions"
 
 # --- OpenAI ---
 OPENAI_CLIENT = OpenAI(
-    api_key = ""
+    api_key=os.environ.get("OPENAI_API_KEY", "EMPTY"),
+    base_url=os.environ.get("OPENAI_BASE_URL") or None,
 )
 
 # --- ZHIPU AI ---
-ZHIPU_API_KEY = "" 
-ZHIPU_URL = ""
+ZHIPU_API_KEY = os.environ.get("ZHIPU_API_KEY", "")
+ZHIPU_URL = os.environ.get("ZHIPU_URL", "")
 
 # ======================================================================
 
@@ -45,7 +52,7 @@ def _request_siliconflow(config):
         "Content-Type": "application/json"
     }
     payload = {
-        "model": config['model'], 
+        "model": config['model'],
         "messages": [
             {"role": "system", "content": "You are a helpful assistant that fixes Java code."},
             {"role": "user", "content": config['prompt']}
@@ -62,7 +69,7 @@ def _request_siliconflow(config):
         response_json = response.json()
 
         content = response_json.get('choices', [{}])[0].get('message', {}).get('content', '')
-        usage = response_json.get('usage', {})  
+        usage = response_json.get('usage', {})
         return content, usage
 
     except requests.exceptions.RequestException as e:
@@ -78,7 +85,7 @@ def _request_openai(config):
     """
     try:
         response = OPENAI_CLIENT.chat.completions.create(
-            model=config['model'], 
+            model=config['model'],
             messages=[
                 {"role": "system", "content": "You are a helpful assistant that fixes Java code."},
                 {"role": "user", "content": config['prompt']}
@@ -104,7 +111,7 @@ def _request_zhipu(config):
         "Content-Type": "application/json"
     }
     payload = {
-        "model": config['model'], 
+        "model": config['model'],
         "messages": [
             {"role": "user", "content": config['prompt']}
         ],
@@ -117,7 +124,7 @@ def _request_zhipu(config):
         response_json = response.json()
 
         content = response_json.get('choices', [{}])[0].get('message', {}).get('content', '')
-        usage = response_json.get('usage', {}) 
+        usage = response_json.get('usage', {})
         return content, usage
 
     except requests.exceptions.RequestException as e:

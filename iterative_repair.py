@@ -19,13 +19,19 @@ from utils.parse_d4j import clean_parse_d4j, get_unified_diff
 
 # ===================================================================================
 # Core Path Configurations
+#
+# Paths are environment-overridable so the same code runs on the author's
+# Windows host and inside the Linux Docker image. Note the data directory is
+# "Defects4J" (capital J) to match the actual folder name; Linux is
+# case-sensitive, so the previous "Defects4j" literals would fail there.
 # ===================================================================================
-PROJECT_ROOT = "../CausalRepair"
-DEFECTS4J_CMD = "../defects4j/framework/bin/defects4j"
-SINGLE_FUNCTION_JSON_PATH = os.path.join(PROJECT_ROOT, "Defects4j/single_function_repair.json")
-TEST_INFO_JSON_PATH = os.path.join(PROJECT_ROOT, "Defects4j/d4j_test_info_sf.json")
-SLICE_INFO_JSON_PATH = os.path.join(PROJECT_ROOT, "Defects4j/d4j_slice_info.json")
-LOCATION_FOLDER_PATH = os.path.join(PROJECT_ROOT, "Defects4j/location")
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFECTS4J_CMD = os.environ.get("DEFECTS4J_CMD", "/opt/defects4j/framework/bin/defects4j")
+D4J_DATA_DIR = os.environ.get("CAUSALREPAIR_DATA", os.path.join(_SCRIPT_DIR, "Defects4J"))
+SINGLE_FUNCTION_JSON_PATH = os.path.join(D4J_DATA_DIR, "single_function_repair.json")
+TEST_INFO_JSON_PATH = os.path.join(D4J_DATA_DIR, "d4j_test_info_sf.json")
+SLICE_INFO_JSON_PATH = os.path.join(D4J_DATA_DIR, "d4j_slice_info.json")
+LOCATION_FOLDER_PATH = os.path.join(D4J_DATA_DIR, "location")
 # ===================================================================================
 
 def build_d4j1_2():
@@ -447,9 +453,16 @@ def main():
     parser.add_argument("--use_slice", action="store_true", help="Include program slice info in the prompt.")
     parser.add_argument("--test_case_mode", type=str, default="all", choices=["all", "one"], help="Controls how many failing test cases to provide in the prompt: 'all' or just the 'one'.")
     parser.add_argument(
-        "--ablation-no-test-slice", 
-        action="store_true", 
+        "--ablation-no-test-slice",
+        action="store_true",
         help="Ablation study flag: If set, removes the test code snippet and its dependencies from the prompt."
+    )
+    parser.add_argument(
+        "--bug_list",
+        type=str,
+        default=None,
+        help="Optional path to a file with one bug id per line (e.g. 'Lang-11'); "
+             "restricts the run to those bugs. Used for the reduced demo scope.",
     )
     args = parser.parse_args()
 
@@ -486,6 +499,16 @@ def main():
     if not bugs_to_run:
         print("   ERROR: No bugs were found to run.")
         return
+
+    # Optional reduced-scope filter: keep only bug ids listed in --bug_list.
+    if args.bug_list:
+        with open(args.bug_list, "r", encoding="utf-8") as f:
+            wanted = {line.strip() for line in f if line.strip() and not line.startswith("#")}
+        bugs_to_run = {k: v for k, v in bugs_to_run.items() if k.replace(".java", "") in wanted}
+        print(f"   Restricted to {len(bugs_to_run)} bug(s) from {args.bug_list}.")
+        if not bugs_to_run:
+            print("   ERROR: No bugs left after applying --bug_list filter.")
+            return
 
     print(f"4. Starting repair process (Provider: {args.provider}, Model: {args.model}, Target: {len(bugs_to_run)} bugs)...")
     

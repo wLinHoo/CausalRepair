@@ -55,7 +55,23 @@ def collect_patches(input_file_path, output_file_path):
     print(f"Results saved to: {output_file_path}")
 
 if __name__ == "__main__":
-    input_file = "repair_result_iterative.json"
-    output_file = "plausible_patches.json"
+    import argparse
 
-    collect_patches(input_file, output_file)
+    parser = argparse.ArgumentParser(
+        description="Collect the first plausible (valid) patch per bug from an iterative repair result."
+    )
+    parser.add_argument(
+        "--input_file",
+        type=str,
+        default="repair_result_iterative.json",
+        help="Path to the iterative repair result JSON (output of iterative_repair.py).",
+    )
+    parser.add_argument(
+        "--output_file",
+        type=str,
+        default="plausible_patches.json",
+        help="Path to write the collected plausible patches JSON.",
+    )
+    args = parser.parse_args()
+
+    collect_patches(args.input_file, args.output_file)
